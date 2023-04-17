@@ -21,13 +21,13 @@ type server struct {
 	oskrpb.UnimplementedOSKRServiceServer
 }
 
-func (s *server) GetSignalStrength(ctx context.Context, req *oskrpb.WifiSignalStrengthRequest) (*oskrpb.WifiSignalStrengthResponse, error) {
-	signalStrength := GetWifiSignalStrength()
+func (s *server) GetWifiSignalStrength(ctx context.Context, req *oskrpb.WifiSignalStrengthRequest) (*oskrpb.WifiSignalStrengthResponse, error) {
+	signalStrength := GetWifiSignalStrengthInt()
 	return &oskrpb.WifiSignalStrengthResponse{SignalStrength: int32(signalStrength)}, nil
 }
 
-func GetWifiSignalStrength() int {
-	cmd := exec.Command("sh", "-c", "iwconfig wlan0 | grep -i --color signal")
+func GetWifiSignalStrengthInt() int {
+	cmd := exec.Command("sh", "-c", "iwconfig wlan0 | grep -i \"Signal level\"")
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Error executing command:", err)
@@ -59,16 +59,22 @@ func GetWifiSignalStrength() int {
 }
 
 func main() {
+	fmt.Println("OSKR starting listening on port 50051")
 	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
+		fmt.Println("failed to listen: %v", err)
 	}
 
+	fmt.Println("New server")
 	grpcServer := grpc.NewServer()
 	oskrpb.RegisterOSKRServiceServer(grpcServer, &server{})
 	reflection.Register(grpcServer)
+	fmt.Println("New server registered")
 
+	fmt.Println("Serving...")
 	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
+		fmt.Println("failed to serve: %v", err)
 	}
 }
