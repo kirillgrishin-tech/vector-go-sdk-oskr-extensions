@@ -1,15 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 	"log"
-	"net"
 	"os/exec"
 	"regexp"
 	"strconv"
+	"time"
 	"vector-go-sdk-oskr-extensions/pkg/oskrpb"
 )
 
@@ -58,23 +57,94 @@ func GetWifiSignalStrengthInt() int {
 	return percentage
 }
 
+func TriggerWakeWord() {
+	var cloudSock ipc.Conn
+
+	log.Println("Creating Test Client Socket to send messages to vic-cloud")
+	cloudSock = getSocketWithRetry(ipc.GetSocketPath("cloud_sock"), "cp_test")
+	defer cloudSock.Close()
+	log.Println("Socket created")
+
+	location_currentzone, _ := time.LoadLocation("Local")
+	log.Println("Triggering hotword: " + location_currentzone.String())
+	hw := cloud.Hotword{Mode: cloud.StreamType_Normal, Locale: "en-US", Timezone: location_currentzone.String(), NoLogging: true}
+	message := cloud.NewMessageWithHotword(&hw)
+
+	log.Println("Creating sender")
+	testSender := voice.IPCMsgSender{Conn: cloudSock}
+	log.Println("Sending message")
+	testSender.Send(message)
+	log.Println("DONE")
+}
+
 func main() {
-	fmt.Println("OSKR starting listening on port 50051")
-	listener, err := net.Listen("tcp", ":50051")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-		fmt.Println("failed to listen: %v", err)
+	/*
+		var err error
+		log.Println("Creating Test Server Socket to receive from vic-cloud")
+		testSock, err = ipc.NewUnixgramServer(ipc.GetSocketPath("cp_test"))
+		if err != nil {
+			log.Println("Server create error:", err)
+		}
+		defer testSock.Close()
+	*/
+
+	//var testSend voice.MsgIO
+	//testSend, testRecv = voice.NewMemPipe()
+
+	//go testReader(testSock, testSend)
+
+	/*
+		fmt.Println("OSKR starting listening on port 50051")
+		listener, err := net.Listen("tcp", ":50051")
+		if err != nil {
+			log.Fatalf("failed to listen: %v", err)
+			fmt.Println("failed to listen: %v", err)
+		}
+
+		fmt.Println("New server")
+		grpcServer := grpc.NewServer()
+		oskrpb.RegisterOSKRServiceServer(grpcServer, &server{})
+		reflection.Register(grpcServer)
+		fmt.Println("New server registered")
+
+		fmt.Println("Serving...")
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+			fmt.Println("failed to serve: %v", err)
+		}
+	*/
+	log.Println("Now triggering wake word")
+	TriggerWakeWord()
+}
+
+func getSocketWithRetry(name string, client string) ipc.Conn {
+	for {
+		sock, err := ipc.NewUnixgramClient(name, client)
+		if err != nil {
+			log.Println("Couldn't create socket", name, "- retrying:", err)
+			time.Sleep(5 * time.Second)
+		} else {
+			return sock
+		}
 	}
+}
 
-	fmt.Println("New server")
-	grpcServer := grpc.NewServer()
-	oskrpb.RegisterOSKRServiceServer(grpcServer, &server{})
-	reflection.Register(grpcServer)
-	fmt.Println("New server registered")
-
-	fmt.Println("Serving...")
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-		fmt.Println("failed to serve: %v", err)
+func testReader(serv ipc.Server, send voice.MsgSender) {
+	for conn := range serv.NewConns() {
+		go func(conn ipc.Conn) {
+			for {
+				msg := conn.ReadBlock()
+				if msg == nil || len(msg) == 0 {
+					conn.Close()
+					return
+				}
+				var cmsg cloud.Message
+				if err := cmsg.Unpack(bytes.NewBuffer(msg)); err != nil {
+					log.Println("Test reader unpack error:", err)
+					continue
+				}
+				send.Send(&cmsg)
+			}
+		}(conn)
 	}
 }
