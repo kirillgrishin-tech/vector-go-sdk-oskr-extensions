@@ -22,5 +22,5 @@ New gRPC server to run on Vector OSKR. It allows new commands to be implemented 
    cd /data
    ./vic-oskr-server
 
-Now you can connect with a client (see https://github.com/fforchino/vector-go-sdk/blob/main/cmd/examples/navigator/main.go
+Now you can connect with a client (see https://github.com/kirillgrishin-tech/vector-go-sdk/blob/main/cmd/examples/navigator/main.go
 for an example)
